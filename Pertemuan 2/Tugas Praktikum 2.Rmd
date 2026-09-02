@@ -1,0 +1,157 @@
+---
+title: "MPDW TUGAS PRAKTIKUM 2"
+author: "Muhammad Alvaro Satria Priyambada"
+date: "2026-09-02"
+output: rmdformats::readthedown
+---
+
+# Tugas 1
+## Input Data
+```{r}
+library(lmtest)
+library(orcutt)
+ 
+period       <- 1:20
+market_share <- c(3.63,4.20,3.33,4.54,2.89,4.87,4.90,5.29,6.18,7.20,
+                   7.25,6.09,6.80,8.65,8.43,8.29,7.18,7.90,8.45,8.23)
+price        <- c(0.97,0.95,0.99,0.91,0.98,0.90,0.89,0.86,0.85,0.82,
+                   0.79,0.83,0.81,0.77,0.76,0.80,0.83,0.79,0.76,0.78)
+ 
+data <- data.frame(period, market_share, price)
+```
+
+## Model Regresi Awal
+```{r}
+model <- lm(market_share ~ price, data = data)
+summary(model)
+```
+```{r}
+lm(market_share ~ price, data = data)
+```
+
+R² ≈ 0.951 → 95,1% keragaman market share dapat dijelaskan oleh price. Model sangat kuat secara fit.
+Koefisien price = −24,29 (signifikan, t ≈ −18,7) → tiap kenaikan price 1 satuan (mis. 0,1) dikaitkan dengan penurunan market share sekitar 2,43 poin. Sesuai intuisi: harga naik → pangsa pasar turun.
+
+
+## Plot Sisaan
+```{r}
+resid_model <- residuals(model)
+ 
+par(mfrow = c(1,2))
+```
+
+### Plot sisaan vs waktu/periode
+```{r}
+plot(period, resid_model, type = "b", pch = 19, col = "blue",
+     main = "Plot Sisaan vs Periode",
+     xlab = "Periode", ylab = "Sisaan")
+abline(h = 0, col = "red", lty = 2)
+```
+### Plot Sisaan vs Sisaan lag 1
+```{r}
+n <- length(resid_model)
+plot(resid_model[-n], resid_model[-1], pch = 19, col = "darkgreen",
+     main = "Sisaan(t-1) vs Sisaan(t)",
+     xlab = "e(t-1)", ylab = "e(t)")
+abline(h = 0, v = 0, lty = 2)
+par(mfrow = c(1,1))
+```
+Plot sisaan vs periode akan menunjukkan sisaan cenderung "bergerombol" — beberapa periode berturut-turut positif, lalu berturut-turut negatif (bukan acak/random di sekitar nol). Ini indikasi visual autokorelasi positif.
+Plot e(t-1) vs e(t) akan menunjukkan pola naik (kemiringan positif), memperkuat dugaan autokorelasi positif.
+
+## Uji Durbin-Watson
+```{r}
+dwtest(model)
+```
+d = 1,136
+Untuk n=20, k=1 (satu prediktor), α=0.05: dL ≈ 1,20 dan dU ≈ 1,41.
+Karena d (1,136) < dL (1,20) → tolak H0, kesimpulan: terdapat autokorelasi positif pada sisaan model.
+
+## Penangan Autokorelasi : Metode Cochrane-Orcutt
+```{r}
+model_co <- cochrane.orcutt(model)
+summary(model_co)
+```
+## Uji DW ulang
+```{r}
+dwtest(lm(model_co$model))
+```
+
+Dugaan ρ dari sisaan awal ≈ 0,418.
+Setelah transformasi Cochrane-Orcutt satu langkah: model menjadi market_share ≈ 26,74 − 24,10 × price, dengan DW baru ≈ 1,95 — sudah mendekati 2 dan berada di daerah "tidak ada autokorelasi" (mendekati dU dan dU s/d 4−dU), sehingga masalah autokorelasi berhasil ditangani.
+
+
+
+
+# Tugas 2
+## Input Data
+```{r}
+year <- 1975:2014
+sales <- c(11.7,12.0,12.3,12.8,13.1,13.6,13.9,14.4,14.7,15.3,
+           15.5,15.8,16.1,16.6,16.9,16.7,16.9,17.4,17.6,17.9,
+           18.0,17.9,18.0,18.2,18.2,18.3,18.6,19.2,19.3,19.5,
+           19.2,19.3,19.5,20.0,20.0,19.9,19.8,19.9,20.2,21.0)
+advertising <- c(9.4,9.6,10,10.4,10.8,10.9,11.7,12.2,12.5,12.9,
+                  13.0,13.2,13.8,14.2,14.6,14.4,15.0,15.4,15.7,15.9,
+                  15.9,16.0,16.3,16.2,16.8,17.3,17.6,18.1,18.3,18.5,
+                  18.7,18.9,19.2,20.0,20.0,20.3,20.4,21.0,21.5,22.1)
+ 
+data <- data.frame(year, sales, advertising)
+```
+
+## Model Regresi Awal
+```{r}
+model <- lm(sales ~ advertising, data = data)
+summary(model)
+```
+R² ≈ 0,960 → 96% keragaman sales dijelaskan oleh advertising. Fit-nya sangat kuat.
+Koefisien advertising = 0,710 (t ≈ 30,0, sangat signifikan) → tiap kenaikan advertising 1 satuan dikaitkan dengan kenaikan sales sekitar 0,71 satuan. Masuk akal secara bisnis.
+
+## Plot Sisaan
+```{r}
+resid_model <- residuals(model)
+ 
+par(mfrow = c(1,2))
+```
+
+### Plot Sisaan vs waktu
+```{r}
+plot(year, resid_model, type = "b", pch = 19, col = "blue",
+     main = "Plot Sisaan vs Tahun",
+     xlab = "Tahun", ylab = "Sisaan")
+abline(h = 0, col = "red", lty = 2)
+```
+
+### Plot sisaan(t-1) vs sisaan(t) 
+```{r}
+n <- length(resid_model)
+plot(resid_model[-n], resid_model[-1], pch = 19, col = "darkgreen",
+     main = "Sisaan(t-1) vs Sisaan(t)",
+     xlab = "e(t-1)", ylab = "e(t)")
+abline(h = 0, v = 0, lty = 2)
+par(mfrow = c(1,1))
+```
+Plot sisaan vs tahun akan terlihat jelas tidak acak — sisaan negatif memanjang di awal (1975–1983), lalu positif berkepanjangan di tengah (1984–2004), lalu negatif lagi di akhir (2010–2014). Pola bergelombang panjang seperti ini adalah ciri khas autokorelasi positif yang kuat.
+Plot e(t-1) vs e(t) menunjukkan kemiringan positif yang jelas, memperkuat dugaan tersebut.
+
+## Uji Durbin-Watson
+```{r}
+dwtest(model)
+```
+d = 0,162 — jauh lebih rendah dari kasus tugas pertama.
+Untuk n=40, k=1, α=0,05: dL ≈ 1,44 dan dU ≈ 1,54.
+Karena d (0,162) < dL (1,44) → tolak H0, kesimpulan: terdapat autokorelasi positif yang sangat kuat pada sisaan (data time series sales & advertising memang rawan tren jangka panjang seperti ini).
+
+## Penanganan Autokorelasi (Metode Cochrane-orcutt)
+```{r}
+model_co <- cochrane.orcutt(model)
+summary(model_co) 
+```
+## Uji DW Ulang setelah Koreksi
+```{r}
+dwtest(lm(model_co$model))
+```
+Berdasarkan hasil analisis, autokorelasi berhasil diatasi setelah dilakukan penanganan dengan metode Cochrane-Orcutt, ditunjukkan oleh kenaikan nilai Durbin-Watson dari 0,162 menjadi 1,94 yang berada dalam zona aman 1,54–2,46, sehingga H₀ tidak ditolak dan tidak terdapat autokorelasi pada sisaan. Koefisien advertising juga turun dari 0,710 menjadi 0,504, tetapi tetap signifikan (t ≈ 7,1), sehingga setiap kenaikan 1 satuan advertising diperkirakan meningkatkan sales sekitar 0,50 satuan. Penurunan R² dari 0,96 menjadi 0,58 bukan menunjukkan model memburuk, melainkan karena model awal dipengaruhi tren waktu bersama antara advertising dan sales. Dengan demikian, setelah autokorelasi ditangani, model menjadi lebih valid dan estimasi pengaruh advertising terhadap sales yang lebih dapat dipertanggungjawabkan adalah sekitar 0,50, bukan 0,71.
+
+
+
