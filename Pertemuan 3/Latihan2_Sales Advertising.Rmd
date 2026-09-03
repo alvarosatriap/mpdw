@@ -1,0 +1,271 @@
+---
+title: "Latihan 2 - Model Autoregressive Distributed Lag (ARDL) Sales & Advertising"
+author: Muhammad Alvaro Satria Priyambada
+output:
+  html_document:
+   rmdformats::readthedown
+---
+
+## *Packages*
+
+```{r, echo=FALSE}
+#PACKAGES
+#install.packages("dLagM") #install jika belum ada
+#install.packages("dynlm") #install jika belum ada
+#install.packages("MLmetrics") #install jika belum ada
+library(dLagM)
+library(dynlm)
+library(MLmetrics)
+library(lmtest)
+library(car)
+```
+
+## Input Data
+
+Data diinput langsung sesuai tabel pada soal (40 tahun data Sales dan Advertising, 1975-2014).
+
+```{r}
+data <- data.frame(
+  Year = 1975:2014,
+  Sales = c(11.7, 12.0, 12.3, 12.8, 13.1, 13.6, 13.9, 14.4, 14.7, 15.3,
+            15.5, 15.8, 16.1, 16.6, 16.9, 16.7, 16.9, 17.4, 17.6, 17.9,
+            18.0, 17.9, 18.0, 18.2, 18.2, 18.3, 18.6, 19.2, 19.3, 19.5,
+            19.2, 19.3, 19.5, 20.0, 20.0, 19.9, 19.8, 19.9, 20.2, 21.0),
+  Advertising = c(9.4, 9.6, 10.0, 10.4, 10.8, 10.9, 11.7, 12.2, 12.5, 12.9,
+                  13.0, 13.2, 13.8, 14.2, 14.6, 14.4, 15.0, 15.4, 15.7, 15.9,
+                  15.9, 16.0, 16.3, 16.2, 16.8, 17.3, 17.6, 18.1, 18.3, 18.5,
+                  18.7, 18.9, 19.2, 20.0, 20.0, 20.3, 20.4, 21.0, 21.5, 22.1)
+)
+str(data)
+data
+```
+
+## Pembagian Data
+
+```{r}
+#SPLIT DATA
+train<-data[1:30,]
+test<-data[31:40,]
+```
+
+```{r}
+#data time series
+train.ts<-ts(train)
+test.ts<-ts(test)
+data.ts<-ts(data)
+```
+
+Sesuai instruksi soal, dilakukan pemodelan **Autoregressive Distributed Lag (ARDL)** dari peubah Sales (Y) terhadap Advertising (X), lalu dicari model terbaik.
+
+## Model Autoregressive (ARDL)
+
+Peubah dependen dipengaruhi oleh peubah independen pada waktu sekarang, serta dipengaruhi juga oleh peubah dependen itu sendiri pada satu waktu yang lalu maka model tersebut disebut *autoregressive* (Gujarati 2004).
+
+### Pemodelan Awal
+
+Pemodelan Autoregressive dilakukan menggunakan fungsi `dLagM::ardlDlm()` . Fungsi tersebut akan menerapkan *autoregressive* berordo $(p,q)$ dengan satu prediktor. Fungsi umum dari `ardlDlm()` adalah sebagai berikut.
+
+```{r, eval=FALSE}
+ardlDlm(formula = NULL , data = NULL , x = NULL , y = NULL , p = 1 , q = 1 , 
+         remove = NULL )
+```
+
+Dengan $p$ adalah integer yang mewakili panjang *lag* yang terbatas dan $q$ adalah integer yang merepresentasikan ordo dari proses *autoregressive*.
+
+```{r}
+model.ardl <- ardlDlm(x = train$Advertising, y = train$Sales, p = 1 , q = 1)
+summary(model.ardl)
+AIC(model.ardl)
+BIC(model.ardl)
+```
+
+```{r}
+model.ardl <- ardlDlm(formula = Sales ~ Advertising, 
+                         data = train, p = 1 , q = 1)
+summary(model.ardl)
+AIC(model.ardl)
+BIC(model.ardl)
+```
+
+### Peramalan dan Akurasi (p=1, q=1)
+
+```{r}
+fore.ardl <- forecast(model = model.ardl, x=test$Advertising, h=10)
+fore.ardl
+```
+
+```{r}
+mape.ardl <- MAPE(fore.ardl$forecasts, test$Sales)
+mape.ardl
+#akurasi data training
+GoF(model.ardl)
+```
+
+### *Lag* Optimum
+
+Selanjutnya dicari kombinasi $p$ (lag X) dan $q$ (lag Y) yang optimum menggunakan `ardlBoundOrders()`.
+
+```{r}
+#penentuan lag optimum
+model.ardl.opt <- ardlBoundOrders(data = data.frame(data), ic = "AIC", 
+                                  formula = Sales ~ Advertising )
+model.ardl.opt
+min_p=c()
+for(i in 1:6){
+  min_p[i]=min(model.ardl.opt$Stat.table[[i]])
+}
+q_opt=which(min_p==min(min_p, na.rm = TRUE))
+p_opt=which(model.ardl.opt$Stat.table[[q_opt]] == 
+              min(model.ardl.opt$Stat.table[[q_opt]], na.rm = TRUE))
+data.frame("q_optimum" = q_opt, "p_optimum" = p_opt, 
+           "AIC"=model.ardl.opt$min.Stat)
+```
+
+Nilai `p_opt` dan `q_opt` di atas menunjukkan kombinasi ordo dengan AIC terkecil. Perlu diingat bahwa pada `ardlBoundOrders()`, notasinya terbalik: `p` mewakili lag pada peubah **Y** dan `q` mewakili lag pada peubah **X**.
+
+### Pemodelan dengan Lag Optimum
+
+```{r}
+#ganti p dan q di bawah sesuai hasil p_opt & q_opt di atas
+model.ardl.opt2 <- ardlDlm(formula = Sales ~ Advertising, 
+                         data = train, p = 1 , q = 1)
+summary(model.ardl.opt2)
+AIC(model.ardl.opt2)
+BIC(model.ardl.opt2)
+```
+
+### Peramalan dan Akurasi (Lag Optimum)
+
+```{r}
+fore.ardl.opt <- forecast(model = model.ardl.opt2, x=test$Advertising, h=10)
+fore.ardl.opt
+mape.ardl.opt <- MAPE(fore.ardl.opt$forecasts, test$Sales)
+mape.ardl.opt
+#akurasi data training
+GoF(model.ardl.opt2)
+```
+
+## Pemodelan ARDL dengan Library `dynlm`
+
+Pemodelan ARDL juga dapat dibandingkan menggunakan *packages* `dynlm` untuk melihat ringkasan model dan melakukan uji asumsi.
+
+`encomptest()` mensyaratkan kedua model yang dibandingkan memiliki **jumlah observasi yang sama** setelah proses lag. Karena itu, model yang dibandingkan lewat `encomptest()` harus punya *lag maksimum* yang sama (di sini sama-sama lag 1), supaya jumlah baris yang hilang akibat lag identik.
+
+```{r}
+#sama dengan model dlm q=1 (lag maks = 1)
+cons_lm1 <- dynlm(Sales ~ Advertising+L(Advertising),data = train.ts)
+
+#sama dengan model ardl p=1 q=0 (lag maks = 1)
+cons_lm2 <- dynlm(Sales ~ Advertising+L(Sales),data = train.ts)
+
+#sama dengan ardl p=1 q=1 (lag maks = 1)
+cons_lm3 <- dynlm(Sales ~ Advertising+L(Advertising)+L(Sales),data = train.ts)
+
+#sama dengan dlm q=2 (lag maks = 2, tidak dibandingkan lewat encomptest karena beda lag maks)
+cons_lm4 <- dynlm(Sales ~ Advertising+L(Advertising)+L(Advertising,2),data = train.ts)
+```
+
+### Ringkasan Model
+
+```{r}
+summary(cons_lm1)
+summary(cons_lm2)
+summary(cons_lm3)
+summary(cons_lm4)
+```
+
+### SSE
+
+```{r}
+deviance(cons_lm1)
+deviance(cons_lm2)
+deviance(cons_lm3)
+deviance(cons_lm4)
+```
+
+Semakin kecil nilai SSE, berarti model lebih baik dalam menyesuaikan data (karena error lebih kecil).
+
+### Uji Encomptest
+
+`cons_lm1` dan `cons_lm2` sama-sama punya lag maksimum 1 (jumlah observasi setelah lag sama), sehingga bisa dibandingkan dengan `encomptest()` untuk melihat apakah penambahan lag Y (`L(Sales)`) atau lag X (`L(Advertising)`) memberikan peningkatan signifikan.
+
+```{r}
+#uji model
+if(require("lmtest")) encomptest(cons_lm1, cons_lm2)
+```
+
+#### Uji Autokorelasi Residual
+
+```{r}
+#durbin watson
+dwtest(cons_lm1)
+dwtest(cons_lm2)
+dwtest(cons_lm3)
+dwtest(cons_lm4)
+```
+
+#### Uji Heterogenitas
+
+```{r}
+bptest(cons_lm1)
+bptest(cons_lm2)
+bptest(cons_lm3)
+bptest(cons_lm4)
+```
+
+-   Jika p-value \> 0.05 → tidak ada heteroskedastisitas
+
+<!-- -->
+
+-    Jika p-value ≤ 0.05 → ada heteroskedastisitas.
+
+#### Uji Normalitas
+
+H0: Residual berdistribusi normal.
+
+H1: Residual tidak berdistribusi normal.
+
+```{r}
+shapiro.test(residuals(cons_lm1))
+shapiro.test(residuals(cons_lm2))
+shapiro.test(residuals(cons_lm3))
+shapiro.test(residuals(cons_lm4))
+```
+
+-   Jika p-value \> 0.05 → gagal tolak H0 → residual normal.
+
+<!-- -->
+
+-    Jika p-value ≤ 0.05 → tolak H0 → residual tidak normal.
+
+## Perbandingan Model
+
+Membuat tabel ringkas akurasi model ARDL awal (p=1,q=1) vs model ARDL dengan lag optimum, berdasarkan nilai MAPE (Mean Absolute Percentage Error).
+
+```{r}
+akurasi <- matrix(c(mape.ardl, mape.ardl.opt))
+row.names(akurasi)<- c("ARDL (p=1,q=1)","ARDL (lag optimum)")
+colnames(akurasi) <- c("MAPE")
+akurasi
+```
+
+Model dengan nilai MAPE terkecil merupakan model ARDL terbaik untuk memprediksi Sales berdasarkan Advertising.
+
+### Plot
+
+```{r}
+par(mfrow=c(1,1))  # atur layout grafik tunggal
+
+# plot data aktual
+plot(test$Advertising, test$Sales, type="b", col="black", 
+     ylim=c(min(test$Sales)-1, max(test$Sales)+1))
+
+# tambahkan garis ramalan dari masing-masing model
+points(test$Advertising, fore.ardl$forecasts, col="red");     lines(test$Advertising, fore.ardl$forecasts, col="red")
+points(test$Advertising, fore.ardl.opt$forecasts, col="blue"); lines(test$Advertising, fore.ardl.opt$forecasts, col="blue")
+
+# legenda model
+legend("topleft",
+       c("Aktual", "ARDL (p=1,q=1)","ARDL (lag optimum)"),
+       lty=1, col=c("black","red","blue"), cex=0.8)
+```
