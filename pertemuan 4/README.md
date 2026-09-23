@@ -13,6 +13,7 @@ dengan 𝑌𝑡−3
 • Hitung autokorelasi masing masing baik dari data bangkitan maupun
 secara teoriti
 
+
 Proses AR(2)
 Melalui program R:
 
@@ -27,6 +28,7 @@ dengan 𝑌𝑡−3
 
 • Hitung autokorelasi masing masing baik dari data bangkitan maupun
 secara teoritis
+
 
 Proses ARMA(2,2)
 Melalui program R:
