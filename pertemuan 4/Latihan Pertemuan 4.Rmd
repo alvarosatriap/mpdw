@@ -1,0 +1,327 @@
+---
+title: "Latihan Pertemuan 4"
+author: "Muhammad Alvaro Satria Priyambada"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown
+---
+
+```{r}
+library(TSA)
+
+n <- 300
+```
+
+# Proses MA(2)
+
+Model: $Y_t = e_t + \theta_1 e_{t-1} + \theta_2 e_{t-2}$, dengan $\theta_1 = 0.4$ dan $\theta_2 = 0.6$.
+
+## Bangkitan Data
+
+```{r}
+theta1 <- 0.4
+theta2 <- 0.6
+
+set.seed(123)
+e <- rnorm(n + 2, mean = 0, sd = 1)
+
+Y_ma2_manual <- numeric(n)
+for (t in 1:n) {
+  Y_ma2_manual[t] <- e[t + 2] + theta1 * e[t + 1] + theta2 * e[t]
+}
+Y_ma2_manual <- ts(Y_ma2_manual)
+head(Y_ma2_manual)
+```
+
+**Interpretasi:** Data dibangkitkan langsung dari persamaan MA(2) menggunakan galat acak (white noise) $e_t \sim N(0,1)$. Setiap nilai $Y_t$ merupakan kombinasi linear dari galat saat ini dan dua galat sebelumnya, sesuai definisi proses moving average orde 2.
+
+## Bangkitan Data (dengan arima.sim)
+
+```{r}
+set.seed(123)
+Y_ma2_sim <- arima.sim(model = list(ma = c(theta1, theta2)), n = n)
+head(Y_ma2_sim)
+```
+
+**Interpretasi:** Fungsi arima.sim() membangkitkan data dengan proses yang sama secara otomatis. Hasilnya secara pola akan mirip dengan pembangkitan manual karena menggunakan koefisien MA yang sama, meskipun nilai spesifiknya berbeda karena mekanisme pembangkitan galat internal berbeda.
+
+## Plot Time Series, ACF, PACF, dan EACF
+
+```{r ma2-plots, fig.height=7, fig.width=9}
+par(mfrow = c(2, 2))
+plot.ts(Y_ma2_sim, main = "Plot Time Series MA(2)", ylab = "Yt")
+acf(Y_ma2_sim, main = "ACF MA(2)")
+pacf(Y_ma2_sim, main = "PACF MA(2)")
+```
+
+```{r}
+eacf(Y_ma2_sim)
+par(mfrow = c(1, 1))
+```
+
+**Interpretasi:**
+
+- **Plot time series** menunjukkan data berfluktuasi di sekitar rata-rata konstan (mendekati 0) tanpa tren maupun perubahan variansi yang sistematis, mengindikasikan data stasioner.
+- **Plot ACF** terpotong setelah lag ke-2, sesuai teori bahwa proses MA(2) memiliki autokorelasi signifikan hanya pada lag 1 dan 2, kemudian mendekati nol pada lag berikutnya.
+- **Plot PACF** meluruh secara bertahap (tails off), tidak terpotong tegas yang dimana ini meruupakan ciri khas proses MA.
+- **EACF** menunjukkan pola segitiga nol (vertex) pada baris MA = 2 dan kolom AR = 0, yang mengonfirmasi identifikasi model MA(2).
+- Karena proses MA murni selalu memenuhi syarat stasioner (tidak bergantung pada nilai koefisien), data ini stasioner.
+
+## Scatterplot $Y_t$ vs $Y_{t-1}$, $Y_{t-2}$, $Y_{t-3}$
+
+```{r}
+nn <- length(Y_ma2_sim)
+par(mfrow = c(1, 3))
+plot(Y_ma2_sim[1:(nn-1)], Y_ma2_sim[2:nn],
+     xlab = "Yt-1", ylab = "Yt", main = "Yt vs Yt-1")
+plot(Y_ma2_sim[1:(nn-2)], Y_ma2_sim[3:nn],
+     xlab = "Yt-2", ylab = "Yt", main = "Yt vs Yt-2")
+plot(Y_ma2_sim[1:(nn-3)], Y_ma2_sim[4:nn],
+     xlab = "Yt-3", ylab = "Yt", main = "Yt vs Yt-3")
+par(mfrow = c(1, 1))
+```
+
+**Interpretasi:** Scatterplot $Y_t$ vs $Y_{t-1}$ dan $Y_t$ vs $Y_{t-2}$ menunjukkan pola sebaran yang sedikit membentuk kecenderungan linear (korelasi tidak nol), sejalan dengan ACF yang signifikan pada lag 1 dan 2. Sebaliknya, scatterplot $Y_t$ vs $Y_{t-3}$ cenderung acak tanpa pola, karena korelasi teoritis pada lag 3 untuk MA(2) adalah nol.
+
+## Autokorelasi: Empiris vs Teoritis
+
+```{r}
+lag_max <- 5
+
+emp <- as.numeric(acf(Y_ma2_sim, lag.max = lag_max, plot = FALSE)$acf)
+teo <- as.numeric(ARMAacf(ma = c(theta1, theta2), lag.max = lag_max))
+
+names(emp) <- 0:(length(emp) - 1)
+names(teo) <- 0:(length(teo) - 1)
+
+lag_sama <- intersect(names(emp), names(teo))
+
+tabel_ma2 <- data.frame(
+  Lag = as.numeric(lag_sama),
+  Empiris = round(emp[lag_sama], 4),
+  Teoritis = round(teo[lag_sama], 4)
+)
+tabel_ma2
+```
+
+**Interpretasi:** Secara teoritis, untuk MA(2):
+$$\rho_1 = \frac{\theta_1 + \theta_1\theta_2}{1+\theta_1^2+\theta_2^2}, \quad \rho_2 = \frac{\theta_2}{1+\theta_1^2+\theta_2^2}, \quad \rho_k = 0 \text{ untuk } k>2$$
+Nilai autokorelasi empiris pada lag 1 dan 2 mendekati nilai teoritis (dengan sedikit deviasi karena sifat sampel acak/finite sample), dan autokorelasi pada lag ≥3 mendekati nol pada keduanya, sesuai teori.
+
+---
+
+# Proses AR(2)
+
+Model: $Y_t = \phi_1 Y_{t-1} + \phi_2 Y_{t-2} + e_t$, dengan $\phi_1 = 0.5$ dan $\phi_2 = 0.2$.
+
+## Bangkitan Data
+
+```{r}
+phi1 <- 0.5
+phi2 <- 0.2
+
+set.seed(123)
+e2 <- rnorm(n + 50) # tambahan burn-in agar efek awal (transien) hilang
+Y_ar2_manual <- numeric(n + 50)
+for (t in 3:(n + 50)) {
+  Y_ar2_manual[t] <- phi1 * Y_ar2_manual[t-1] + phi2 * Y_ar2_manual[t-2] + e2[t]
+}
+Y_ar2_manual <- ts(Y_ar2_manual[51:(n+50)]) 
+head(Y_ar2_manual)
+```
+
+**Interpretasi:** Karena AR(2) bersifat rekursif, digunakan periode *burn-in* di awal agar pengaruh nilai inisial (0) tidak lagi memengaruhi data yang dianalisis, sehingga proses sudah berada dalam kondisi stasioner sebelum data diambil.
+
+## Bangkitan Data (dengan arima.sim)
+
+```{r}
+set.seed(123)
+Y_ar2_sim <- arima.sim(model = list(ar = c(phi1, phi2)), n = n)
+head(Y_ar2_sim)
+```
+
+**Interpretasi:** `arima.sim()` secara internal juga menerapkan burn-in sehingga hasilnya langsung representatif untuk proses AR(2) yang stasioner, tanpa perlu penyesuaian manual.
+
+## Cek Kestasioneran (Akar Karakteristik)
+
+```{r}
+akar_ar2 <- polyroot(c(1, -phi1, -phi2))
+Modulus <- Mod(akar_ar2)
+Modulus
+```
+
+**Interpretasi:** Proses AR(2) stasioner jika seluruh akar persamaan karakteristik $1-\phi_1 B-\phi_2 B^2=0$ berada **di luar lingkaran satuan** (modulus > 1). Hasil di atas menunjukkan modulus akar > 1, sehingga proses AR(2) dengan $\phi_1=0.5$ dan $\phi_2=0.2$ **stasioner**.
+
+## Plot Time Series, ACF, PACF, dan EACF
+
+```{r}}
+par(mfrow = c(2, 2))
+plot.ts(Y_ar2_sim, main = "Plot Time Series AR(2)", ylab = "Yt")
+acf(Y_ar2_sim, main = "ACF AR(2)")
+pacf(Y_ar2_sim, main = "PACF AR(2)")
+```
+
+```{r}
+eacf(Y_ar2_sim)
+par(mfrow = c(1, 1))
+```
+
+**Interpretasi:**
+
+- **Plot time series** berfluktuasi stabil di sekitar rata-rata konstan → mendukung kesimpulan data **stasioner**.
+- **Plot ACF** meluruh secara eksponensial/gelombang (tails off), tidak terpotong tegas — ciri khas proses AR.
+- **Plot PACF** terpotong (cuts off) setelah lag ke-2, sesuai teori bahwa proses AR(2) hanya memiliki PACF signifikan hingga lag 2.
+- **EACF** menunjukkan pola segitiga nol pada baris AR = 2 dan kolom MA = 0, mengonfirmasi identifikasi model AR(2).
+
+## Scatterplot $Y_t$ vs $Y_{t-1}$, $Y_{t-2}$, $Y_{t-3}$
+
+```{r}
+nn2 <- length(Y_ar2_sim)
+par(mfrow = c(1, 3))
+plot(Y_ar2_sim[1:(nn2-1)], Y_ar2_sim[2:nn2],
+     xlab = "Yt-1", ylab = "Yt", main = "Yt vs Yt-1")
+plot(Y_ar2_sim[1:(nn2-2)], Y_ar2_sim[3:nn2],
+     xlab = "Yt-2", ylab = "Yt", main = "Yt vs Yt-2")
+plot(Y_ar2_sim[1:(nn2-3)], Y_ar2_sim[4:nn2],
+     xlab = "Yt-3", ylab = "Yt", main = "Yt vs Yt-3")
+par(mfrow = c(1, 1))
+```
+
+**Interpretasi:** Berbeda dengan MA(2), pada proses AR(2) ketiga scatterplot ($Y_t$ vs $Y_{t-1}$, $Y_{t-2}$, maupun $Y_{t-3}$) menunjukkan kecenderungan pola linear (meski semakin melemah pada lag yang lebih jauh). Hal ini karena pada proses AR, pengaruh nilai masa lalu tidak langsung terputus di lag tertentu, melainkan meluruh secara bertahap ke semua lag.
+
+## Autokorelasi: Empiris vs Teoritis
+
+```{r}
+lag_max <- 5
+
+emp <- as.numeric(acf(Y_ar2_sim, lag.max = lag_max, plot = FALSE)$acf)
+teo <- as.numeric(ARMAacf(ar = c(phi1, phi2), lag.max = lag_max))
+
+names(emp) <- 0:(length(emp) - 1)
+names(teo) <- 0:(length(teo) - 1)
+
+lag_sama <- intersect(names(emp), names(teo))
+
+tabel_ar2 <- data.frame(
+  Lag = as.numeric(lag_sama),
+  Empiris = round(emp[lag_sama], 4),
+  Teoritis = round(teo[lag_sama], 4)
+)
+tabel_ar2
+```
+
+**Interpretasi:** Nilai ACF teoritis proses AR(2) diperoleh dari persamaan Yule-Walker. Autokorelasi empiris pada tiap lag mendekati nilai teoritisnya dan sama-sama menunjukkan pola meluruh (tidak terputus tegas), sesuai karakteristik proses AR.
+
+---
+
+# Proses ARMA(2,2)
+
+Model: $Y_t = \phi_1 Y_{t-1} + \phi_2 Y_{t-2} + e_t + \theta_1 e_{t-1} + \theta_2 e_{t-2}$, dengan $\phi_1=0.5$, $\phi_2=0.2$, $\theta_1=0.4$, $\theta_2=0.6$.
+
+## Bangkitan Data 
+
+```{r}
+phi1 <- 0.5;  phi2 <- 0.2
+theta1 <- 0.4; theta2 <- 0.6
+
+set.seed(123)
+e3 <- rnorm(n + 50)
+Y_arma_manual <- numeric(n + 50)
+for (t in 3:(n + 50)) {
+  Y_arma_manual[t] <- phi1 * Y_arma_manual[t-1] + phi2 * Y_arma_manual[t-2] +
+    e3[t] + theta1 * e3[t-1] + theta2 * e3[t-2]
+}
+Y_arma_manual <- ts(Y_arma_manual[51:(n+50)])
+head(Y_arma_manual)
+```
+
+**Interpretasi:** Proses ARMA(2,2) menggabungkan komponen autoregresif (ketergantungan pada $Y_{t-1}, Y_{t-2}$) dan komponen moving average (ketergantungan pada $e_{t-1}, e_{t-2}$). Sama seperti AR(2), digunakan burn-in agar data yang dianalisis sudah berada pada kondisi stasioner.
+
+## Bangkitan Data (dengan arima.sim)
+
+```{r}
+set.seed(123)
+Y_arma_sim <- arima.sim(model = list(ar = c(phi1, phi2), ma = c(theta1, theta2)), n = n)
+head(Y_arma_sim)
+```
+
+**Interpretasi:** Hasil arima.sim() merepresentasikan proses ARMA(2,2) yang sama, dengan kestasioneran ditentukan oleh komponen AR-nya (karena bagian MA selalu stasioner).
+
+## Cek Kestasioneran (Akar Karakteristik Bagian AR)
+
+```{r}
+akar_arma <- polyroot(c(1, -phi1, -phi2))
+Mod(akar_arma)
+```
+
+**Interpretasi:** Karena koefisien AR pada ARMA(2,2) sama dengan pada AR(2) sebelumnya ($\phi_1=0.5$, $\phi_2=0.2$), modulus akarnya juga > 1, sehingga proses ARMA(2,2) ini **stasioner**. Kestasioneran ARMA hanya ditentukan oleh bagian AR, sedangkan bagian MA selalu memenuhi kondisi *invertible*/stasioner dengan sendirinya.
+
+## Plot Time Series, ACF, PACF, dan EACF
+
+```{r}
+par(mfrow = c(2, 2))
+plot.ts(Y_arma_sim, main = "Plot Time Series ARMA(2,2)", ylab = "Yt")
+acf(Y_arma_sim, main = "ACF ARMA(2,2)")
+pacf(Y_arma_sim, main = "PACF ARMA(2,2)")
+```
+
+```{r}
+eacf(Y_arma_sim)
+par(mfrow = c(1, 1))
+```
+
+**Interpretasi:**
+
+- **Plot time series** stabil di sekitar rata-rata konstan tanpa tren → data **stasioner**.
+- **Plot ACF** meluruh secara bertahap (tails off) — dipengaruhi oleh komponen AR.
+- **Plot PACF** juga meluruh (tails off), tidak terpotong tegas seperti pada MA(2) atau AR(2) murni — ciri campuran ARMA di mana baik ACF maupun PACF sama-sama tidak terpotong tegas.
+- **EACF** menunjukkan pola segitiga nol mulai pada baris AR = 2 dan kolom MA = 2, mengonfirmasi identifikasi model ARMA(2,2).
+
+## Scatterplot $Y_t$ vs $Y_{t-1}$, $Y_{t-2}$, $Y_{t-3}$
+
+```{r}
+nn3 <- length(Y_arma_sim)
+par(mfrow = c(1, 3))
+plot(Y_arma_sim[1:(nn3-1)], Y_arma_sim[2:nn3],
+     xlab = "Yt-1", ylab = "Yt", main = "Yt vs Yt-1")
+plot(Y_arma_sim[1:(nn3-2)], Y_arma_sim[3:nn3],
+     xlab = "Yt-2", ylab = "Yt", main = "Yt vs Yt-2")
+plot(Y_arma_sim[1:(nn3-3)], Y_arma_sim[4:nn3],
+     xlab = "Yt-3", ylab = "Yt", main = "Yt vs Yt-3")
+par(mfrow = c(1, 1))
+```
+
+**Interpretasi:** Seperti proses AR, ketiga scatterplot menunjukkan kecenderungan pola linear (positif), dengan kekuatan hubungan yang semakin melemah seiring bertambahnya lag, karena adanya komponen AR yang membuat pengaruh masa lalu meluruh secara bertahap ke lag-lag berikutnya.
+
+## Autokorelasi: Empiris vs Teoritis
+
+```{r}
+lag_max <- 5
+
+emp <- as.numeric(acf(Y_arma_sim, lag.max = lag_max, plot = FALSE)$acf)
+teo <- as.numeric(ARMAacf(ar = c(phi1, phi2), ma = c(theta1, theta2), lag.max = lag_max))
+
+names(emp) <- 0:(length(emp) - 1)
+names(teo) <- 0:(length(teo) - 1)
+
+lag_sama <- intersect(names(emp), names(teo))
+
+tabel_arma <- data.frame(
+  Lag = as.numeric(lag_sama),
+  Empiris = round(emp[lag_sama], 4),
+  Teoritis = round(teo[lag_sama], 4)
+)
+tabel_arma
+```
+
+**Interpretasi:** Nilai ACF teoritis ARMA(2,2) dihitung menggunakan ARMAacf() yang menggabungkan kontribusi bagian AR dan MA. Nilai ACF empiris cukup dekat dengan nilai teoritisnya pada seluruh lag yang diamati, menunjukkan bahwa data hasil bangkitan (baik manual maupun arima.sim) sudah cukup representatif terhadap model ARMA(2,2) yang ditentukan.
+
+---
+
+# Kesimpulan Umum
+
+| Proses | Pola ACF | Pola PACF | Kestasioneran |
+|---|---|---|---|
+| MA(2) | Cuts off setelah lag 2 | Tails off | Selalu stasioner |
+| AR(2) | Tails off | Cuts off setelah lag 2 | Stasioner jika akar karakteristik di luar lingkaran satuan (terpenuhi di sini) |
+| ARMA(2,2) | Tails off | Tails off | Stasioner (ditentukan oleh bagian AR, yang terpenuhi di sini) |
